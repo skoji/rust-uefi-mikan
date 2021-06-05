@@ -8,7 +8,10 @@
 extern crate alloc;
 use alloc::string::ToString;
 use console::gop;
-use core::fmt::Write;
+use core::{
+    fmt::Write,
+    mem::{size_of, MaybeUninit},
+};
 use elf_rs::*;
 use proto::console;
 use uefi::{
@@ -22,7 +25,7 @@ use uefi::{
 };
 
 static mut LOGGER: Option<uefi::logger::Logger> = None;
-static mut MMAP_BUF: [u8; 4096 * 4] = [0; 4096 * 4];
+static mut MMAP_BUF: [MaybeUninit<MemoryDescriptor>; 1024] = [MaybeUninit::uninit(); 1024];
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -88,7 +91,6 @@ fn efi_main(handle: Handle, st: SystemTable<Boot>) -> Status {
         // set gop mode if it is not in QEMU
         set_gop_mode(gop);
     }
-    log::error!("intentional panic");
     writeln!(stdout, "Hello from rust").unwrap();
     writeln!(stdout, "Firmware Vendor {}", st.firmware_vendor()).unwrap();
 
@@ -108,7 +110,13 @@ fn efi_main(handle: Handle, st: SystemTable<Boot>) -> Status {
         .unwrap();
     let memmap_file = memmap_file.into_type().unwrap().unwrap();
     if let Regular(mut memmap_file) = memmap_file {
-        let (_, memmap_iter) = unsafe { bt.memory_map(&mut MMAP_BUF).unwrap().unwrap() };
+        let buf: &mut [u8] = unsafe {
+            core::slice::from_raw_parts_mut(
+                MMAP_BUF.as_mut_ptr() as *mut u8,
+                MMAP_BUF.len() * size_of::<MemoryDescriptor>(),
+            )
+        };
+        let (_, memmap_iter) = bt.memory_map(buf).unwrap().unwrap();
         memmap_file
             .write("Index, Type, PhysicalStart, NumberOfPages, Attribute\n".as_bytes())
             .unwrap()
