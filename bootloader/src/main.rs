@@ -22,6 +22,7 @@ use uefi::{
 };
 
 static mut LOGGER: Option<uefi::logger::Logger> = None;
+static mut MMAP_BUF: [u8; 4096 * 4] = [0; 4096 * 4];
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -107,8 +108,7 @@ fn efi_main(handle: Handle, st: SystemTable<Boot>) -> Status {
         .unwrap();
     let memmap_file = memmap_file.into_type().unwrap().unwrap();
     if let Regular(mut memmap_file) = memmap_file {
-        let mmap_buf = &mut [0; 4096 * 4];
-        let (_, memmap_iter) = bt.memory_map(mmap_buf).unwrap().unwrap();
+        let (_, memmap_iter) = unsafe { bt.memory_map(&mut MMAP_BUF).unwrap().unwrap() };
         memmap_file
             .write("Index, Type, PhysicalStart, NumberOfPages, Attribute\n".as_bytes())
             .unwrap()
