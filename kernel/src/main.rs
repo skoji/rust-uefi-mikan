@@ -158,13 +158,29 @@ static mut KERNEL_MAIN_STACK: KernelStack<MAIN_STACK_SIZE> = KernelStack {
     stack: [0; MAIN_STACK_SIZE],
 };
 
+#[derive(Debug, Copy, Clone)]
+#[repr(C)]
+pub struct MemoryDescriptor {
+    pub ty: u32,
+    padding: u32,
+    pub phys_start: u64,
+    pub virt_start: u64,
+    pub page_count: u64,
+    pub att: u64,
+}
+
 #[no_mangle]
-extern "C" fn kernel_main(fb: *mut FrameBuffer, mi: *mut ModeInfo) {
+extern "C" fn kernel_main(
+    fb: *mut FrameBuffer,
+    mi: *mut ModeInfo,
+    memmap_ptr: *mut MemoryDescriptor,
+    memmap_length: usize,
+) {
     let stack_addr =
         unsafe { (&KERNEL_MAIN_STACK.stack as *const u8).add(MAIN_STACK_SIZE) as usize };
     // move stack to rsp;
     unsafe { asm!("mov rsp, {}", in(reg) stack_addr) };
-    kernel_main_newstack(fb, mi, stack_addr);
+    kernel_main_newstack(fb, mi, memmap_ptr, memmap_length, stack_addr);
     // should not reach here.
     unsafe {
         loop {
@@ -174,12 +190,19 @@ extern "C" fn kernel_main(fb: *mut FrameBuffer, mi: *mut ModeInfo) {
 }
 
 #[no_mangle]
-extern "C" fn kernel_main_newstack(fb: *mut FrameBuffer, mi: *mut ModeInfo, stack_addr: usize) {
+extern "C" fn kernel_main_newstack(
+    fb: *mut FrameBuffer,
+    mi: *mut ModeInfo,
+    memmap_ptr: *mut MemoryDescriptor,
+    memmap_length: usize,
+    stack_addr: usize,
+) {
     initialize(fb, mi);
     welcome_message();
     unsafe { info!(" stack top 0x{:?}", (&KERNEL_MAIN_STACK.stack as *const u8)) };
     info!("stack bottom : {:x}", stack_addr);
-
+    info!("memmap_ptr : {:?}", memmap_ptr);
+    info!("memmap_length : {}", memmap_length);
     #[cfg(test)]
     test_main();
 

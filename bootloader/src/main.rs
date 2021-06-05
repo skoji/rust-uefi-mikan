@@ -104,37 +104,6 @@ fn efi_main(handle: Handle, st: SystemTable<Boot>) -> Status {
     };
     let mut root = sfs.open_volume().unwrap().unwrap();
 
-    let memmap_file = root
-        .open("memmap", FileMode::CreateReadWrite, FileAttribute::empty())
-        .unwrap()
-        .unwrap();
-    let memmap_file = memmap_file.into_type().unwrap().unwrap();
-    if let Regular(mut memmap_file) = memmap_file {
-        let buf: &mut [u8] = unsafe {
-            core::slice::from_raw_parts_mut(
-                MMAP_BUF.as_mut_ptr() as *mut u8,
-                MMAP_BUF.len() * size_of::<MemoryDescriptor>(),
-            )
-        };
-        let (_, memmap_iter) = bt.memory_map(buf).unwrap().unwrap();
-        memmap_file
-            .write("Index, Type, PhysicalStart, NumberOfPages, Attribute\n".as_bytes())
-            .unwrap()
-            .unwrap();
-        for (i, m) in memmap_iter.enumerate() {
-            memmap_file
-                .write(
-                    format!(
-                        "{}, {:?}, {}, {}, {:?}\n",
-                        i, m.ty, m.phys_start, m.page_count, m.att
-                    )
-                    .as_bytes(),
-                )
-                .unwrap()
-                .unwrap();
-        }
-        memmap_file.close();
-    };
     let kernel_file = root
         .open("laranja-kernel", FileMode::Read, FileAttribute::READ_ONLY)
         .unwrap()
@@ -210,7 +179,12 @@ fn efi_main(handle: Handle, st: SystemTable<Boot>) -> Status {
     let kernel_entry = unsafe {
         core::mem::transmute::<
             *const (),
-            extern "sysv64" fn(fb: *mut FrameBufferInfo, mi: *mut gop::ModeInfo) -> (),
+            extern "sysv64" fn(
+                fb: *mut FrameBufferInfo,
+                mi: *mut gop::ModeInfo,
+                memmap_ptr: *mut MemoryDescriptor,
+                memmap_length: usize,
+            ) -> (),
         >(entry_pointer)
     };
     let mut mi = gop.current_mode_info();
@@ -218,16 +192,22 @@ fn efi_main(handle: Handle, st: SystemTable<Boot>) -> Status {
     let fb_pt = fb.as_mut_ptr();
     let fb_size = fb.size();
     // exit boot service
-    let max_mmap_size = bt.memory_map_size() + 8 * core::mem::size_of::<MemoryDescriptor>();
-    let mut mmap_storage = vec![0; max_mmap_size].into_boxed_slice();
-    let (_st, _iter) = st
-        .exit_boot_services(handle, &mut mmap_storage[..])
+    let mmap_buf: &mut [u8] = unsafe {
+        core::slice::from_raw_parts_mut(
+            MMAP_BUF.as_mut_ptr() as *mut u8,
+            MMAP_BUF.len() * size_of::<MemoryDescriptor>(),
+        )
+    };
+    let (_st, mmap_iter) = st
+        .exit_boot_services(handle, mmap_buf)
         .expect_success("Failed to exit boot services");
+
     let mut fb = FrameBufferInfo {
         fb: fb_pt,
         size: fb_size,
     };
-    kernel_entry(&mut fb, &mut mi);
+    let mmap_ptr = unsafe { MMAP_BUF.as_mut_ptr() as *mut MemoryDescriptor };
+    kernel_entry(&mut fb, &mut mi, mmap_ptr, mmap_iter.len());
 
     uefi::Status::SUCCESS
 }
