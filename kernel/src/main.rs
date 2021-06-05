@@ -148,10 +148,37 @@ fn switch_echi_to_xhci(_xhc_dev: &Device, pci_devices: &PciDevices) {
     }
 }
 
+#[repr(C, align(16))]
+struct KernelStack<const N: usize> {
+    pub stack: [u8; N],
+}
+const MAIN_STACK_SIZE: usize = 1024 * 1024;
+
+static mut KERNEL_MAIN_STACK: KernelStack<MAIN_STACK_SIZE> = KernelStack {
+    stack: [0; MAIN_STACK_SIZE],
+};
+
 #[no_mangle]
 extern "C" fn kernel_main(fb: *mut FrameBuffer, mi: *mut ModeInfo) {
+    let stack_addr =
+        unsafe { (&KERNEL_MAIN_STACK.stack as *const u8).add(MAIN_STACK_SIZE) as usize };
+    // move stack to rsp;
+    unsafe { asm!("mov rsp, {}", in(reg) stack_addr) };
+    kernel_main_newstack(fb, mi, stack_addr);
+    // should not reach here.
+    unsafe {
+        loop {
+            asm!("hlt");
+        }
+    }
+}
+
+#[no_mangle]
+extern "C" fn kernel_main_newstack(fb: *mut FrameBuffer, mi: *mut ModeInfo, stack_addr: usize) {
     initialize(fb, mi);
     welcome_message();
+    unsafe { info!(" stack top 0x{:?}", (&KERNEL_MAIN_STACK.stack as *const u8)) };
+    info!("stack bottom : {:x}", stack_addr);
 
     #[cfg(test)]
     test_main();
