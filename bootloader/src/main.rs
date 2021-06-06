@@ -225,22 +225,25 @@ fn efi_main(handle: Handle, st: SystemTable<Boot>) -> Status {
     let fb_pt = fb.as_mut_ptr();
     let fb_size = fb.size();
     // exit boot service
-    let mmap_buf: &mut [u8] = unsafe {
-        core::slice::from_raw_parts_mut(
-            MMAP_BUF.as_mut_ptr() as *mut u8,
-            MMAP_BUF.len() * size_of::<MemoryDescriptor>(),
-        )
-    };
+    let max_mmap_size = bt.memory_map_size() + 8 * core::mem::size_of::<MemoryDescriptor>();
+    let mut mmap_storage = vec![0; max_mmap_size].into_boxed_slice();
     let (_st, mmap_iter) = st
-        .exit_boot_services(handle, mmap_buf)
+        .exit_boot_services(handle, &mut mmap_storage[..])
         .expect_success("Failed to exit boot services");
+    let mmap_len = mmap_iter.len();
+
+    for (i, m) in mmap_iter.enumerate() {
+        unsafe {
+            MMAP_BUF[i] = MaybeUninit::new(*m);
+        }
+    }
 
     let mut fb = FrameBufferInfo {
         fb: fb_pt,
         size: fb_size,
     };
     let mmap_ptr = unsafe { MMAP_BUF.as_mut_ptr() as *mut MemoryDescriptor };
-    kernel_entry(&mut fb, &mut mi, mmap_ptr, mmap_iter.len());
+    kernel_entry(&mut fb, &mut mi, mmap_ptr, mmap_len);
 
     uefi::Status::SUCCESS
 }

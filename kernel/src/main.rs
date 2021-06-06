@@ -272,12 +272,14 @@ extern "C" fn kernel_main_newstack(
     welcome_message();
     unsafe { trace!("stack top 0x{:?}", (&KERNEL_MAIN_STACK.stack as *const u8)) };
     trace!("stack bottom : {:x}", stack_addr);
-    info!("memmap_length : {}", memmap_length);
+    trace!("memmap_length : {}", memmap_length);
     let memmaps: &[MemoryDescriptor] =
         unsafe { core::slice::from_raw_parts(memmap_ptr, memmap_length) };
-    info!("memmap 0; {}", memmaps[0]);
-    info!("memmap 1; {}", memmaps[1]);
-    info!("memmap 2; {}", memmaps[2]);
+    trace!("memmap 0; {}", memmaps[0]);
+    trace!("memmap 1; {}", memmaps[1]);
+    trace!("memmap 2; {}", memmaps[2]);
+    trace!("memmap 3; {}", memmaps[3]);
+    trace!("memmap 4; {}", memmaps[4]);
     #[cfg(test)]
     test_main();
 
