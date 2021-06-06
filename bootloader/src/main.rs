@@ -104,6 +104,39 @@ fn efi_main(handle: Handle, st: SystemTable<Boot>) -> Status {
     };
     let mut root = sfs.open_volume().unwrap().unwrap();
 
+    let memmap_file = root
+        .open(
+            "memmap.csv",
+            FileMode::CreateReadWrite,
+            FileAttribute::empty(),
+        )
+        .unwrap()
+        .unwrap();
+    let memmap_file = memmap_file.into_type().unwrap().unwrap();
+    if let Regular(mut memmap_file) = memmap_file {
+        let max_mmap_size = bt.memory_map_size() + 8 * core::mem::size_of::<MemoryDescriptor>();
+        let mut mmap_storage = vec![0; max_mmap_size].into_boxed_slice();
+
+        let (_, memmap_iter) = bt.memory_map(&mut mmap_storage[..]).unwrap().unwrap();
+        memmap_file
+            .write("Index, Type, PhysicalStart, NumberOfPages, Attribute\n".as_bytes())
+            .unwrap()
+            .unwrap();
+        for (i, m) in memmap_iter.enumerate() {
+            memmap_file
+                .write(
+                    format!(
+                        "{}, {:?}, {}, {}, {:?}\n",
+                        i, m.ty, m.phys_start, m.page_count, m.att
+                    )
+                    .as_bytes(),
+                )
+                .unwrap()
+                .unwrap();
+        }
+        memmap_file.close();
+    };
+
     let kernel_file = root
         .open("laranja-kernel", FileMode::Read, FileAttribute::READ_ONLY)
         .unwrap()
