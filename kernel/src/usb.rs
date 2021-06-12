@@ -1,4 +1,4 @@
-use crate::debug;
+use crate::{debug, trace};
 mod context;
 mod device_manager;
 mod registers;
@@ -23,7 +23,7 @@ impl<'a> Controller<'a> {
     /// mmio_base must be a valid base address for xHCI device MMIO
     pub unsafe fn new(mmio_base: usize) -> Self {
         let cap_regs = &mut *(mmio_base as *mut CapabilityRegisters);
-        debug!("cap regs: {}", cap_regs);
+        trace!("cap regs: {}", cap_regs);
         let op_regs =
             &mut *((mmio_base + cap_regs.cap_length.read() as usize) as *mut OperationalRegisters);
         let doorbell_first =
@@ -40,10 +40,10 @@ impl<'a> Controller<'a> {
         }
 
         while !op_regs.usbsts.read().hc_halted() {}
-        debug!("hc halted");
+        trace!("hc halted");
 
         // reset controller
-        debug!(
+        trace!(
             "hc reset value; {}",
             op_regs.usbcmd.read().host_controller_reset()
         );
@@ -51,9 +51,9 @@ impl<'a> Controller<'a> {
             usbcmd.set_host_controller_reset(true);
         });
         while op_regs.usbcmd.read().host_controller_reset() {}
-        debug!("controller reset done.");
+        trace!("controller reset done.");
         while op_regs.usbsts.read().controller_not_ready() {}
-        debug!("controller is ready.");
+        trace!("controller is ready.");
         let max_slots = cap_regs.hcs_params1.read().max_device_slots();
         debug!("max device slots: {}", max_slots);
         op_regs
